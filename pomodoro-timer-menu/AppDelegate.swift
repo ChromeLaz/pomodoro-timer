@@ -72,7 +72,6 @@ class PomodoroViewController: NSViewController {
     
     // UI Elements
     var taskNameLabel: NSTextField!
-    var taskChangeButton: NSButton!
     var timerLabel: NSTextField!
     var progressView: SimpleProgressView!
     var playPauseButton: NSButton!
@@ -109,24 +108,16 @@ class PomodoroViewController: NSViewController {
         resetButton.action = #selector(resetTimer)
         view.addSubview(resetButton)
         
-        // Task name with change button - BIGGER
-        taskNameLabel = NSTextField(frame: NSRect(x: 40, y: 420, width: 240, height: 35))
+        // Task name centered - NO CHANGE BUTTON
+        taskNameLabel = NSTextField(frame: NSRect(x: 40, y: 420, width: 280, height: 35))
         taskNameLabel.stringValue = "Select Task"
-        taskNameLabel.font = NSFont.boldSystemFont(ofSize: 28) // Increased size
+        taskNameLabel.font = NSFont.boldSystemFont(ofSize: 28)
         taskNameLabel.textColor = NSColor.labelColor
         taskNameLabel.alignment = .center
         taskNameLabel.isBezeled = false
         taskNameLabel.isEditable = false
         taskNameLabel.backgroundColor = NSColor.clear
         view.addSubview(taskNameLabel)
-        
-        taskChangeButton = NSButton(frame: NSRect(x: 290, y: 425, width: 30, height: 25))
-        taskChangeButton.title = "⇅"
-        taskChangeButton.font = NSFont.systemFont(ofSize: 16)
-        taskChangeButton.isBordered = false
-        taskChangeButton.target = self
-        taskChangeButton.action = #selector(showTaskMenu)
-        view.addSubview(taskChangeButton)
         
         // Timer Label
         timerLabel = NSTextField(frame: NSRect(x: 80, y: 330, width: 200, height: 80))
@@ -181,7 +172,7 @@ class PomodoroViewController: NSViewController {
         view.addSubview(deleteButton)
         
         // Task List
-        scrollView = NSScrollView(frame: NSRect(x: 20, y: 50, width: 320, height: 150)) // Moved up to make space for counter
+        scrollView = NSScrollView(frame: NSRect(x: 20, y: 50, width: 320, height: 150))
         taskTableView = NSTableView()
         
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("TaskColumn"))
@@ -213,6 +204,35 @@ class PomodoroViewController: NSViewController {
         view.addSubview(todayCounterLabel)
     }
     
+    // MARK: - Key Events Handler
+    override func keyDown(with event: NSEvent) {
+        // Gestisci la pressione di Invio per rinominare il task selezionato
+        if event.keyCode == 36 { // Codice per il tasto Invio
+            if let selectedIndex = selectedTaskIndex {
+                let sortedTasksList = sortedTasks()
+                if selectedIndex < sortedTasksList.count {
+                    let selectedTask = sortedTasksList[selectedIndex]
+                    if !selectedTask.isCompleted {
+                        renameTask(selectedTask)
+                        return
+                    }
+                }
+            }
+        }
+        super.keyDown(with: event)
+    }
+    
+    // Assicuriamoci che la view possa ricevere eventi da tastiera
+    override var acceptsFirstResponder: Bool {
+        return true
+    }
+    
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        // Rendi la view il first responder per ricevere gli eventi da tastiera
+        view.window?.makeFirstResponder(self)
+    }
+    
     @objc func toggleTimer() {
         if isRunning {
             pauseTimer()
@@ -233,96 +253,51 @@ class PomodoroViewController: NSViewController {
         timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             self.tick()
         }
+        
+        // CRITICAL: Update BOTH the array AND currentTask reference
+        if let currentId = currentTask?.id,
+           let index = tasks.firstIndex(where: { $0.id == currentId }) {
+            tasks[index].isTimerActive = true
+            currentTask = tasks[index]  // Update reference!
+            saveTasks()
+        }
+        
         updateDisplay()
+        updateTaskList() // Refresh list to remove hourglass immediately
     }
     
     func pauseTimer() {
         isRunning = false
         timer?.invalidate()
         timer = nil
+        
+        // CRITICAL: Update BOTH the array AND currentTask reference
+        if let currentId = currentTask?.id,
+           let index = tasks.firstIndex(where: { $0.id == currentId }) {
+            tasks[index].isTimerActive = false
+            currentTask = tasks[index]  // Update reference!
+            saveTasks()
+        }
+        
         updateDisplay()
+        updateTaskList() // Refresh list to show/hide hourglass immediately
     }
     
     @objc func resetTimer() {
         pauseTimer()
         timeRemaining = 25 * 60
         
-        // Reset the saved progress for current task and remove hourglass
+        // CRITICAL: Reset AND update currentTask reference
         if let currentId = currentTask?.id,
            let index = tasks.firstIndex(where: { $0.id == currentId }) {
             tasks[index].savedTimeRemaining = 25 * 60
             tasks[index].isTimerActive = false
+            currentTask = tasks[index]  // Update reference!
             saveTasks()
         }
         
         updateDisplay()
-        updateTaskList() // Refresh to remove hourglass
-    }
-    
-    @objc func showTaskMenu() {
-        let menu = NSMenu()
-        
-        // Add tasks to menu
-        let activeTasks = tasks.filter { !$0.isCompleted }
-        for task in activeTasks {
-            let item = NSMenuItem(title: task.name, action: #selector(selectTaskFromMenu(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = task.id
-            if task.id == currentTask?.id {
-                item.state = .on
-            }
-            menu.addItem(item)
-        }
-        
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Rename Current Task", action: #selector(renameCurrentTask), keyEquivalent: ""))
-        
-        // Show menu relative to the button
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: taskChangeButton.frame.height), in: taskChangeButton)
-    }
-    
-    @objc func selectTaskFromMenu(_ sender: NSMenuItem) {
-        guard let taskId = sender.representedObject as? UUID,
-              let task = tasks.first(where: { $0.id == taskId }) else { return }
-        
-        // Save current task progress before switching
-        saveCurrentTaskProgress()
-        
-        // Load the new task's saved progress
-        currentTask = task
-        loadTaskProgress()
-        
-        updateTaskDisplay()
-        updateTaskList() // This now includes selection update
-        saveTasks()
-    }
-    
-    @objc func renameCurrentTask() {
-        guard let current = currentTask else {
-            showAlert(title: "No Task Selected", message: "Please select a task first!")
-            return
-        }
-        
-        let alert = NSAlert()
-        alert.messageText = "Rename Task"
-        alert.informativeText = "Enter new name for the task:"
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        
-        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
-        input.stringValue = current.name
-        alert.accessoryView = input
-        
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn && !input.stringValue.trimmingCharacters(in: .whitespaces).isEmpty {
-            if let index = tasks.firstIndex(where: { $0.id == current.id }) {
-                tasks[index].name = input.stringValue.trimmingCharacters(in: .whitespaces)
-                currentTask = tasks[index]
-                updateTaskDisplay()
-                updateTaskList()
-                saveTasks()
-            }
-        }
+        updateTaskList() // Refresh to remove hourglass immediately
     }
     
     @objc func taskClicked() {
@@ -331,25 +306,51 @@ class PomodoroViewController: NSViewController {
         
         // Show/hide delete button
         deleteButton.isHidden = selectedTaskIndex == nil
+        
+        // Assicurati che la view sia il first responder per ricevere eventi da tastiera
+        view.window?.makeFirstResponder(self)
+        
+        // Change task when clicking on a different active task
+        if let selectedIndex = selectedTaskIndex {
+            let sortedTasksList = sortedTasks()
+            if selectedIndex < sortedTasksList.count {
+                let clickedTask = sortedTasksList[selectedIndex]
+                
+                // Only switch if it's a different active task
+                if !clickedTask.isCompleted && clickedTask.id != currentTask?.id {
+                    // Save current task progress before switching
+                    saveCurrentTaskProgress()
+                    
+                    // Load the new task's saved progress
+                    currentTask = clickedTask
+                    loadTaskProgress()
+                    
+                    updateTaskDisplay()
+                    updateTaskList()
+                    saveTasks()
+                    
+                    // Flash the selected task for 1 second
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        self.taskTableView.deselectAll(nil)
+                        self.selectedTaskIndex = nil
+                        self.deleteButton.isHidden = true
+                        self.updateTaskList()
+                    }
+                }
+            }
+        }
+        
         updateTaskList()
     }
     
     @objc func taskDoubleClicked() {
+        // Double click now just renames the task
         let selectedRow = taskTableView.selectedRow
         guard selectedRow >= 0 && selectedRow < sortedTasks().count else { return }
         
         let task = sortedTasks()[selectedRow]
         if !task.isCompleted {
-            // Save current task progress before switching
-            saveCurrentTaskProgress()
-            
-            // Load the new task's saved progress
-            currentTask = task
-            loadTaskProgress()
-            
-            updateTaskDisplay()
-            updateTaskList() // This now includes selection update
-            saveTasks()
+            renameTask(task)
         }
     }
     
@@ -373,11 +374,31 @@ class PomodoroViewController: NSViewController {
             if let window = self.view.window {
                 alert.beginSheetModal(for: window) { response in
                     if response == .alertFirstButtonReturn {
+                        // Check if deleting current task while timer is running
+                        let isDeletingCurrentTask = self.currentTask?.id == taskToDelete.id
+                        
+                        if isDeletingCurrentTask {
+                            // Stop timer and reset if deleting current task
+                            if self.isRunning {
+                                self.pauseTimer()
+                            }
+                            self.timeRemaining = 25 * 60
+                        }
+                        
                         self.tasks.removeAll { $0.id == taskToDelete.id }
                         
-                        if self.currentTask?.id == taskToDelete.id {
-                            self.currentTask = nil
+                        if isDeletingCurrentTask {
+                            // Auto-select next available task
+                            let activeTasks = self.tasks.filter { !$0.isCompleted }
+                            if !activeTasks.isEmpty {
+                                self.currentTask = activeTasks[0]
+                                self.loadTaskProgress()
+                            } else {
+                                self.currentTask = nil
+                                self.timeRemaining = 25 * 60
+                            }
                             self.updateTaskDisplay()
+                            self.updateDisplay()
                         }
                         
                         self.selectedTaskIndex = nil
@@ -416,9 +437,40 @@ class PomodoroViewController: NSViewController {
                     self.timeRemaining = 25 * 60
                     
                     self.updateTaskDisplay()
-                    self.updateTaskList() // This now includes selection update
+                    self.updateTaskList()
                     self.updateDisplay()
                     self.saveTasks()
+                }
+            }
+        }
+    }
+    
+    func renameTask(_ task: Task) {
+        let alert = NSAlert()
+        alert.messageText = "Rename Task"
+        alert.informativeText = "Enter new name for the task:"
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        input.stringValue = task.name
+        alert.accessoryView = input
+        
+        if let window = self.view.window {
+            alert.beginSheetModal(for: window) { response in
+                if response == .alertFirstButtonReturn && !input.stringValue.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if let index = self.tasks.firstIndex(where: { $0.id == task.id }) {
+                        self.tasks[index].name = input.stringValue.trimmingCharacters(in: .whitespaces)
+                        
+                        // Update current task if it's the one being renamed
+                        if self.currentTask?.id == task.id {
+                            self.currentTask = self.tasks[index]
+                            self.updateTaskDisplay()
+                        }
+                        
+                        self.updateTaskList()
+                        self.saveTasks()
+                    }
                 }
             }
         }
@@ -486,22 +538,7 @@ class PomodoroViewController: NSViewController {
     
     func updateTaskList() {
         taskTableView.reloadData()
-        
-        // Update selection to current task
-        updateTaskSelection()
-    }
-    
-    func updateTaskSelection() {
-        guard let current = currentTask else {
-            taskTableView.deselectAll(nil)
-            return
-        }
-        
-        let sortedTasksList = sortedTasks()
-        if let index = sortedTasksList.firstIndex(where: { $0.id == current.id }) {
-            let indexSet = IndexSet(integer: index)
-            taskTableView.selectRowIndexes(indexSet, byExtendingSelection: false)
-        }
+        // Don't auto-select current task, only show selection when manually clicking
     }
     
     func updateTodayCounter() {
@@ -516,7 +553,7 @@ class PomodoroViewController: NSViewController {
         
         // Save current progress and timer state
         tasks[index].savedTimeRemaining = timeRemaining
-        tasks[index].isTimerActive = isRunning
+        tasks[index].isTimerActive = isRunning  // IMPORTANT: Save actual running state
         
         // Pause timer when switching tasks
         pauseTimer()
@@ -531,8 +568,10 @@ class PomodoroViewController: NSViewController {
         // Load saved progress for this task
         timeRemaining = current.savedTimeRemaining
         
-        // Don't auto-resume timer when switching tasks for better UX
-        // User needs to manually start if they want to continue
+        // CRITICAL: Update the currentTask reference with fresh data from array
+        if let index = tasks.firstIndex(where: { $0.id == current.id }) {
+            currentTask = tasks[index]
+        }
         
         updateDisplay()
     }
@@ -706,6 +745,9 @@ extension PomodoroViewController: NSTableViewDataSource, NSTableViewDelegate {
                     currentTask = activeTasks[0]
                     loadTaskProgress()
                     updateTaskDisplay()
+                } else {
+                    currentTask = nil
+                    updateTaskDisplay()
                 }
             }
             
@@ -771,23 +813,25 @@ class TaskCellView: NSTableCellView {
         toggleButton.font = NSFont.boldSystemFont(ofSize: 16)
         toggleButton.contentTintColor = task.isCompleted ? NSColor.systemGray : NSColor.systemGray
         
-        // Setup label with progress indicator (fixed emoji bug)
-        let baseText = "\(task.name) - \(task.completedPomodoros)"
-        let progressIndicator = task.savedTimeRemaining < (25 * 60) && !task.isCompleted ? " ⏳" : ""
-        let taskText = "\(baseText)🍅\(progressIndicator)"
-        
+        // Setup label - NO EMOJIS when completed to avoid bugs
         if task.isCompleted {
-            // Strikethrough for completed tasks
+            let taskText = "\(task.name) - \(task.completedPomodoros)"
             let attributedString = NSMutableAttributedString(string: taskText)
             attributedString.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: taskText.count))
             attributedString.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: NSRange(location: 0, length: taskText.count))
             taskLabel.attributedStringValue = attributedString
         } else {
+            // Only show emojis for active tasks
+            let baseText = "\(task.name) - \(task.completedPomodoros)"
+            // Show hourglass ONLY if: has progress AND is paused (not active) AND has saved time < 25min
+            let showHourglass = task.savedTimeRemaining < (25 * 60) && !task.isTimerActive
+            let progressIndicator = showHourglass ? " ⏳" : ""
+            let taskText = "\(baseText)🍅\(progressIndicator)"
             taskLabel.stringValue = taskText
             taskLabel.textColor = NSColor.labelColor
         }
         
-        // Background for selected task
+        // Background for selected task - ONLY GRAY
         wantsLayer = true
         layer?.backgroundColor = isSelected ? NSColor.darkGray.cgColor : NSColor.clear.cgColor
         layer?.cornerRadius = 4
