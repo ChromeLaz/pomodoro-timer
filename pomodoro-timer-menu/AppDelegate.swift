@@ -5,7 +5,7 @@ struct Task: Codable {
     var name: String
     var completedPomodoros: Int = 0
     var isCompleted: Bool = false
-    var savedTimeRemaining: Int = 25 * 60 // Save progress for each task
+    var savedTimeRemaining: Int = 25 * 60 // 1 MINUTO per test veloci
     var isTimerActive: Bool = false // Track if this task has an active timer
 }
 
@@ -69,7 +69,7 @@ class PomodoroViewController: NSViewController {
     
     // Timer logic
     var timer: Timer?
-    var timeRemaining = 25 * 60
+    var timeRemaining = 25 * 60  // 1 MINUTO per test veloci
     var isRunning = false
     var currentTask: Task?
     var tasks: [Task] = []
@@ -127,7 +127,7 @@ class PomodoroViewController: NSViewController {
         
         // Timer Label
         timerLabel = NSTextField(frame: NSRect(x: 80, y: 330, width: 200, height: 80))
-        timerLabel.stringValue = "25:00"
+        timerLabel.stringValue = "25:00"  // Cambiato per 1 minuto
         timerLabel.font = NSFont.boldSystemFont(ofSize: 48)
         timerLabel.textColor = NSColor.systemOrange
         timerLabel.alignment = .center
@@ -299,10 +299,10 @@ class PomodoroViewController: NSViewController {
         
         switch timerMode {
         case .work:
-            timeRemaining = 25 * 60
+            timeRemaining = 25 * 60  // 1 MINUTO per test
             if let currentId = currentTask?.id,
                let index = tasks.firstIndex(where: { $0.id == currentId }) {
-                tasks[index].savedTimeRemaining = 25 * 60
+                tasks[index].savedTimeRemaining = 25 * 60  // 1 MINUTO
                 tasks[index].isTimerActive = false
                 currentTask = tasks[index]
                 saveTasks()
@@ -310,7 +310,7 @@ class PomodoroViewController: NSViewController {
         case .breakTime:
             // Reset alla modalità work
             timerMode = .work
-            timeRemaining = 25 * 60
+            timeRemaining = 25 * 60  // 1 MINUTO per test
         }
         
         updateDisplay()
@@ -399,7 +399,7 @@ class PomodoroViewController: NSViewController {
                             if self.isRunning {
                                 self.pauseTimer()
                             }
-                            self.timeRemaining = 25 * 60
+                            self.timeRemaining = 25 * 60  // 25 MINUTO
                             self.timerMode = .work
                         }
                         
@@ -413,7 +413,7 @@ class PomodoroViewController: NSViewController {
                                 self.loadTaskProgress()
                             } else {
                                 self.currentTask = nil
-                                self.timeRemaining = 25 * 60
+                                self.timeRemaining = 25 * 60  // 25 MINUTO
                             }
                             self.updateTaskDisplay()
                             self.updateDisplay()
@@ -453,7 +453,7 @@ class PomodoroViewController: NSViewController {
                     // Solo se siamo in modalità work, cambia task
                     if self.timerMode == .work {
                         self.currentTask = newTask
-                        self.timeRemaining = 25 * 60
+                        self.timeRemaining = 25 * 60  // 1 MINUTO per test
                     }
                     
                     self.updateTaskDisplay()
@@ -507,28 +507,25 @@ class PomodoroViewController: NSViewController {
                 // Pomodoro completato
                 completePomodoro()
                 
-                // Suoneria più lunga (2 secondi)
-                playLongerSound()
+                // APRI SUBITO la pagina normale con messaggio "Pomodoro Completed"
+                showPomodoroCompletedMessage()
+                openMainPopover()
                 
-                // Passa immediatamente alla modalità break e apri il popup normale
-                timerMode = .breakTime
-                timeRemaining = 5 * 60 // 5 minuti
-                updateDisplay()
-                updateTaskDisplay()
+                // SUONERIA FORTE E CONTINUA per 5 secondi
+                playContinuousSound()
                 
-                // Avvia automaticamente il timer della pausa
-                startTimer()
+                // Avvia break dopo 5 secondi (quando finisce la suoneria)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                    self.startBreakTimer()
+                }
                 
             case .breakTime:
                 // Break completato
-                // Suoneria più lunga (2 secondi)
-                playLongerSound()
+                // Suoneria come iPhone
+                playiPhoneStyleSound()
                 
-                // Mostra popup break complete per 2 secondi
-                showBreakCompletedPopup()
-                
-                // Torna a work mode e apri il popover dopo 2 secondi
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                // NESSUN POPUP - torna a work mode e apri direttamente il popover
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     self.returnToWorkMode()
                     self.openMainPopover()
                 }
@@ -542,7 +539,7 @@ class PomodoroViewController: NSViewController {
         if let currentId = currentTask?.id,
            let index = tasks.firstIndex(where: { $0.id == currentId }) {
             tasks[index].completedPomodoros += 1
-            tasks[index].savedTimeRemaining = 25 * 60
+            tasks[index].savedTimeRemaining = 25 * 60  // 1 MINUTO
             tasks[index].isTimerActive = false
             currentTask = tasks[index]
             
@@ -555,12 +552,117 @@ class PomodoroViewController: NSViewController {
         }
     }
     
-    func playLongerSound() {
-        // Suoneria più lunga e forte - ripete il beep 4 volte per 2 secondi totali
-        for i in 0..<4 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.5) {
-                NSSound.beep()
+    func playContinuousSound() {
+        // SUONERIA FORTE E CONTINUA per 5 secondi (più lunga!)
+        let soundInterval = 0.1 // Ogni 0.2 secondi = 5 volte al secondo
+        let totalDuration = 3.0 // 5 SECONDI totali
+        let numberOfBeeps = Int(totalDuration / soundInterval)
+        
+        for i in 0..<numberOfBeeps {
+            let delay = Double(i) * soundInterval
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                if let sound = NSSound(named: "Ping") {
+                    sound.volume = 1.0 // Volume massimo
+                    sound.play()
+                } else {
+                    NSSound.beep()
+                }
             }
+        }
+    }
+    
+    // Variabile temporanea per mostrare il messaggio di completamento
+    var isPomodoroCompleted = false
+    
+    func showPomodoroCompletedMessage() {
+        isPomodoroCompleted = true
+        updateTaskDisplay() // Aggiorna il display per mostrare il messaggio
+        
+        // Nascondi il messaggio dopo 5 secondi (durata della suoneria)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            self.isPomodoroCompleted = false
+            self.updateTaskDisplay() // Ripristina il display normale
+        }
+    }
+    
+    func showPomodoroCompletedFromMenuBar() {
+        let taskName = currentTask?.name ?? "Unknown Task"
+        let pomodoroCount = currentTask?.completedPomodoros ?? 0
+        
+        // Popup che appare dalla barra dei menu (non al centro)
+        let popupWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 140),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        
+        popupWindow.backgroundColor = NSColor.controlBackgroundColor
+        popupWindow.isOpaque = false
+        popupWindow.hasShadow = true
+        popupWindow.level = .floating
+        
+        // Posiziona vicino alla barra dei menu (top-right dello schermo)
+        if let screen = NSScreen.main {
+            let screenRect = screen.visibleFrame
+            let x = screenRect.maxX - 340 // 20px dal bordo destro
+            let y = screenRect.maxY - 160 // Vicino alla barra dei menu
+            popupWindow.setFrameOrigin(NSPoint(x: x, y: y))
+        }
+        
+        // Contenuto del popup
+        let contentView = NSView(frame: popupWindow.contentView!.bounds)
+        contentView.wantsLayer = true
+        contentView.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        contentView.layer?.cornerRadius = 12
+        
+        // Emoji tomato
+        let emojiLabel = NSTextField(frame: NSRect(x: 0, y: 95, width: 320, height: 30))
+        emojiLabel.stringValue = "🍅"
+        emojiLabel.font = NSFont.systemFont(ofSize: 24)
+        emojiLabel.alignment = .center
+        emojiLabel.isBezeled = false
+        emojiLabel.isEditable = false
+        emojiLabel.backgroundColor = NSColor.clear
+        contentView.addSubview(emojiLabel)
+        
+        // Titolo
+        let titleLabel = NSTextField(frame: NSRect(x: 20, y: 70, width: 280, height: 25))
+        titleLabel.stringValue = "Pomodoro Completed!"
+        titleLabel.font = NSFont.boldSystemFont(ofSize: 18)
+        titleLabel.alignment = .center
+        titleLabel.isBezeled = false
+        titleLabel.isEditable = false
+        titleLabel.backgroundColor = NSColor.clear
+        contentView.addSubview(titleLabel)
+        
+        // Info task
+        let infoLabel = NSTextField(frame: NSRect(x: 20, y: 35, width: 280, height: 35))
+        infoLabel.stringValue = "Task: \(taskName)\nTotal Pomodoros: \(pomodoroCount)"
+        infoLabel.font = NSFont.systemFont(ofSize: 12)
+        infoLabel.alignment = .center
+        infoLabel.isBezeled = false
+        infoLabel.isEditable = false
+        infoLabel.backgroundColor = NSColor.clear
+        contentView.addSubview(infoLabel)
+        
+        // Break message
+        let breakLabel = NSTextField(frame: NSRect(x: 20, y: 10, width: 280, height: 20))
+        breakLabel.stringValue = "Starting 1-minute break..."
+        breakLabel.font = NSFont.systemFont(ofSize: 11)
+        breakLabel.textColor = NSColor.systemGreen
+        breakLabel.alignment = .center
+        breakLabel.isBezeled = false
+        breakLabel.isEditable = false
+        breakLabel.backgroundColor = NSColor.clear
+        contentView.addSubview(breakLabel)
+        
+        popupWindow.contentView = contentView
+        popupWindow.makeKeyAndOrderFront(nil)
+        
+        // Chiudi automaticamente dopo 3 secondi (sincronizzato con la suoneria)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            popupWindow.close()
         }
     }
     
@@ -575,18 +677,35 @@ class PomodoroViewController: NSViewController {
         }
     }
     
+    func playiPhoneStyleSound() {
+        // Suoneria POTENTE - BIP BIP BIP per 2-3 secondi!
+        let soundTimes = [0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4]
+        
+        for delay in soundTimes {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                // Usa il suono di sistema più forte
+                if let sound = NSSound(named: "Ping") {
+                    sound.volume = 1.0 // Volume massimo
+                    sound.play()
+                } else {
+                    NSSound.beep() // Fallback
+                }
+            }
+        }
+    }
+    
     func startBreakTimer() {
         timerMode = .breakTime
-        timeRemaining = 5 * 60 // 5 minuti
-        updateDisplay()
+        timeRemaining = 5 * 60  // 1 MINUTO anche per il break
+        updateDisplay()  // IMPORTANTE: aggiorna display per nascondere X
         updateTaskDisplay()
         startTimer() // Avvia automaticamente
     }
     
     func returnToWorkMode() {
         timerMode = .work
-        timeRemaining = 25 * 60
-        updateDisplay()
+        timeRemaining = 25 * 60  // 1 MINUTO per test
+        updateDisplay()  // IMPORTANTE: aggiorna display per mostrare X di nuovo
         updateTaskDisplay()
         // Non avviare automaticamente il timer work
     }
@@ -743,24 +862,31 @@ class PomodoroViewController: NSViewController {
         
         timerLabel.stringValue = timeString
         
-        // Colore del timer basato sulla modalità
+        // Colore del timer basato sulla modalità - VERDE SEMPRE DURANTE BREAK
         switch timerMode {
         case .work:
             timerLabel.textColor = NSColor.systemOrange
         case .breakTime:
-            timerLabel.textColor = NSColor.systemGreen
+            timerLabel.textColor = NSColor.systemGreen  // SEMPRE VERDE!
         }
         
         // Update play/pause button
         playPauseButton.title = isRunning ? "⏸" : "▶"
         
+        // NASCONDI COMPLETAMENTE il pulsante Reset (X) durante BREAK TIME
+        if timerMode == .breakTime {
+            resetButton.isHidden = true
+        } else {
+            resetButton.isHidden = false
+        }
+        
         // Update progress bar
         let totalTime: Float
         switch timerMode {
         case .work:
-            totalTime = Float(25 * 60)
+            totalTime = Float(25 * 60)  // 1 MINUTO
         case .breakTime:
-            totalTime = Float(5 * 60)
+            totalTime = Float(5 * 60)  // 1 MINUTO anche per break
         }
         
         let elapsed = Float(totalTime - Float(timeRemaining))
@@ -774,7 +900,10 @@ class PomodoroViewController: NSViewController {
     }
     
     func updateTaskDisplay() {
-        if timerMode == .breakTime {
+        if isPomodoroCompleted {
+            // Mostra messaggio di completamento durante la suoneria
+            taskNameLabel.stringValue = "🍅 Pomodoro Completed!\nTake a Pause"
+        } else if timerMode == .breakTime {
             taskNameLabel.stringValue = "☕ Break Time"
         } else if let current = currentTask {
             taskNameLabel.stringValue = current.name
@@ -812,7 +941,7 @@ class PomodoroViewController: NSViewController {
         guard timerMode == .work else { return } // Solo per work mode
         
         guard let current = currentTask else {
-            timeRemaining = 25 * 60
+            timeRemaining = 25 * 60  // 1 MINUTO per test
             return
         }
         
@@ -1058,8 +1187,8 @@ class TaskCellView: NSTableCellView {
         } else {
             // Only show emojis for active tasks
             let baseText = "\(task.name) - \(task.completedPomodoros)"
-            // Show hourglass ONLY if: has progress AND is paused (not active) AND has saved time < 25min
-            let showHourglass = task.savedTimeRemaining < (25 * 60) && !task.isTimerActive
+            // Show hourglass ONLY if: has progress AND is paused (not active) AND has saved time < 1min
+            let showHourglass = task.savedTimeRemaining < (1 * 60) && !task.isTimerActive
             let progressIndicator = showHourglass ? " ⏳" : ""
             let taskText = "\(baseText)🍅\(progressIndicator)"
             taskLabel.stringValue = taskText
