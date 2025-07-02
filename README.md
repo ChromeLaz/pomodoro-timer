@@ -14,13 +14,14 @@ This app helps you boost productivity with 25-minute work sessions and 5-minute 
 Download & Run
 
 Clone the repository:
+
 bashgit clone https://github.com/yourusername/pomodoro-timer.git
 cd pomodoro-timer
 
 Open in Xcode:
 bashopen pomodoro-timer.xcodeproj
 
-Build and run:
+Press: Cmd + R to build and run
 
 Select your target device/simulator
 Press Cmd + R to build and run
