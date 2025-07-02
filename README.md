@@ -2,7 +2,7 @@
 
 A simple, elegant Pomodoro Timer for macOS that lives in your menu bar. Built with Swift and native macOS technologies.
 
-<img width="432" alt="Screenshot 2025-07-02 alle 12 04 19" src="https://github.com/user-attachments/assets/37c94be8-a5ff-48f4-92fe-3821db8e8364" />
+![Uploading Screenshot 2025-07-02 alle 12.07.57.png…]()
 
 
 
