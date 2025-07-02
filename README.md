@@ -1,4 +1,4 @@
-🍅 Pomodoro Timer
+#🍅 Pomodoro Timer
 
 A simple, elegant Pomodoro Timer for macOS that lives in your menu bar. Built with Swift and native macOS technologies.
 
@@ -10,7 +10,7 @@ This app helps you boost productivity with 25-minute work sessions and 5-minute 
 
 <img width="432" alt="Screenshot 2025-07-02 alle 12 22 35" src="https://github.com/user-attachments/assets/8ad49e6c-9a0b-42d7-84f3-4850902eed0b" />
 
-🚀 Installation
+##🚀 Installation
 Download & Run
 
 Clone the repository:
@@ -27,8 +27,7 @@ Press Cmd + R to build and run
 The app will appear in your menu bar with a 🍅 icon
 
 
-
-Security Notice
+##Security Notice
 ⚠️ This app is not signed or notarized. When running for the first time:
 
 macOS may show a security warning
