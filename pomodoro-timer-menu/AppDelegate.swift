@@ -1,4 +1,7 @@
 import Cocoa
+import IOKit
+import IOKit.pwr_mgt
+import AVFoundation
 
 struct Task: Codable {
     var id = UUID()
@@ -23,6 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         setupStatusItem()
         setupPopover()
+        setupSleepNotifications()
     }
     
     func setupStatusItem() {
@@ -53,6 +57,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     
+    // MARK: - Sleep/Wake Notifications Setup
+    func setupSleepNotifications() {
+        // Register for sleep notifications
+        let notificationCenter = NSWorkspace.shared.notificationCenter
+        
+        notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSystemWillSleep),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        
+        notificationCenter.addObserver(
+            self,
+            selector: #selector(handleSystemDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        
+        print("🛌 Sleep/Wake notifications registered")
+    }
+    
+    @objc func handleSystemWillSleep() {
+        print("🛌 System going to sleep - pausing timer")
+        viewController.handleSystemSleep()
+    }
+    
+    @objc func handleSystemDidWake() {
+        print("⏰ System woke up - timer remains paused")
+        viewController.handleSystemWake()
+    }
+    
     @objc func togglePopover() {
         if let button = statusItem.button {
             if popover.isShown {
@@ -76,6 +112,14 @@ class PomodoroViewController: NSViewController {
     var selectedTaskIndex: Int?
     var timerMode: TimerMode = .work
     
+    // Sleep/Wake tracking
+    var wasRunningBeforeSleep = false
+    var timeBeforeSleep: Date?
+    
+    // Audio player for powerful sound
+    var audioPlayer: AVAudioPlayer?
+    var soundTimer: Timer?
+    
     // UI Elements
     var taskNameLabel: NSTextField!
     var timerLabel: NSTextField!
@@ -91,6 +135,7 @@ class PomodoroViewController: NSViewController {
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 500))
         setupUI()
+        setupAudioPlayer()
         loadTasks()
         updateDisplay()
         updateTaskList() // Force initial load of task list
@@ -102,6 +147,47 @@ class PomodoroViewController: NSViewController {
         if let layer = view.layer {
             layer.backgroundColor = NSColor.controlBackgroundColor.cgColor
         }
+    }
+    
+    // MARK: - Audio Setup
+    func setupAudioPlayer() {
+        // Usa il suono di sistema Glass che è più forte
+        if let soundURL = Bundle.main.url(forResource: "Glass", withExtension: "aiff", subdirectory: "/System/Library/Sounds") {
+            do {
+                audioPlayer = try AVAudioPlayer(contentsOf: soundURL)
+                audioPlayer?.prepareToPlay()
+                audioPlayer?.volume = 1.0
+            } catch {
+                print("Errore nel caricare il suono: \(error)")
+            }
+        }
+    }
+    
+    // MARK: - Sleep/Wake Handlers FIXED
+    func handleSystemSleep() {
+        if isRunning {
+            wasRunningBeforeSleep = true
+            timeBeforeSleep = Date()
+            pauseTimer()
+            print("⏸️ Timer paused due to system sleep at \(timeBeforeSleep!)")
+        } else {
+            wasRunningBeforeSleep = false
+            timeBeforeSleep = nil
+        }
+    }
+    
+    func handleSystemWake() {
+        if let sleepTime = timeBeforeSleep {
+            let sleepDuration = Date().timeIntervalSince(sleepTime)
+            print("⏰ System was asleep for \(sleepDuration) seconds")
+            
+            // Il timer rimane in pausa - l'utente deve riavviarlo manualmente
+            print("⏰ Timer remains paused - user must restart manually")
+        }
+        
+        wasRunningBeforeSleep = false
+        timeBeforeSleep = nil
+        updateDisplay()
     }
     
     func setupUI() {
@@ -273,6 +359,7 @@ class PomodoroViewController: NSViewController {
         
         updateDisplay()
         updateTaskList()
+        print("▶️ Timer started")
     }
     
     func pauseTimer() {
@@ -292,6 +379,7 @@ class PomodoroViewController: NSViewController {
         
         updateDisplay()
         updateTaskList()
+        print("⏸️ Timer paused")
     }
     
     @objc func resetTimer() {
@@ -512,7 +600,7 @@ class PomodoroViewController: NSViewController {
                 openMainPopover()
                 
                 // SUONERIA FORTE E CONTINUA per 3 secondi
-                playContinuousSound()
+                playPowerfulContinuousSound()
                 
                 // Avvia break dopo 3 secondi (quando finisce la suoneria)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
@@ -552,22 +640,72 @@ class PomodoroViewController: NSViewController {
         }
     }
     
-    func playContinuousSound() {
-        // SUONERIA FORTE E CONTINUA per 3 secondi
-        let soundInterval = 0.1 // Ogni 0.1 secondi = 10 volte al secondo
-        let totalDuration = 3.0 // 3 SECONDI totali
-        let numberOfBeeps = Int(totalDuration / soundInterval)
+    // MARK: - SUONERIA POTENTISSIMA E CONTINUA
+    func playPowerfulContinuousSound() {
+        // Ferma eventuali suoni precedenti
+        soundTimer?.invalidate()
         
-        for i in 0..<numberOfBeeps {
-            let delay = Double(i) * soundInterval
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                if let sound = NSSound(named: "Ping") {
-                    sound.volume = 1.0 // Volume massimo
+        // Imposta il volume del sistema al massimo temporaneamente
+        
+        var soundCount = 0
+        let maxSounds = 30 // 30 suoni in 3 secondi = 10 al secondo
+        
+        // Timer che suona 10 volte al secondo per 3 secondi
+        soundTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { timer in
+            soundCount += 1
+            
+            if soundCount > maxSounds {
+                timer.invalidate()
+                self.soundTimer = nil
+                return
+            }
+            
+            // Usa più suoni contemporaneamente per massima potenza
+            DispatchQueue.global(qos: .userInteractive).async {
+                // Suono 1: Glass (più forte)
+                if let sound = NSSound(named: "Glass") {
+                    sound.volume = 1.0
                     sound.play()
-                } else {
-                    NSSound.beep()
+                }
+                
+                // Suono 2: Hero (aggiuntivo per più volume)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
+                    if let sound = NSSound(named: "Hero") {
+                        sound.volume = 1.0
+                        sound.play()
+                    }
+                }
+                
+                // Suono 3: Sosumi (terzo livello)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
+                    if let sound = NSSound(named: "Sosumi") {
+                        sound.volume = 1.0
+                        sound.play()
+                    }
                 }
             }
+            
+            // Vibrazione visiva del timer label per feedback
+            DispatchQueue.main.async {
+                let isEven = soundCount % 2 == 0
+                self.timerLabel.textColor = isEven ? NSColor.systemRed : NSColor.systemOrange
+                
+                // Effetto pulsante
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = 0.05
+                    self.timerLabel.layer?.transform = isEven ?
+                        CATransform3DMakeScale(1.1, 1.1, 1.0) :
+                        CATransform3DMakeScale(1.0, 1.0, 1.0)
+                }
+            }
+        }
+        
+        // Assicurati che il timer si fermi dopo 3 secondi
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+            self.soundTimer?.invalidate()
+            self.soundTimer = nil
+            self.timerLabel.textColor = NSColor.systemOrange
+            self.timerLabel.layer?.transform = CATransform3DIdentity
         }
     }
     
@@ -603,7 +741,7 @@ class PomodoroViewController: NSViewController {
         for delay in soundTimes {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 // Usa il suono di sistema più forte
-                if let sound = NSSound(named: "Ping") {
+                if let sound = NSSound(named: "Glass") {
                     sound.volume = 1.0 // Volume massimo
                     sound.play()
                 } else {
